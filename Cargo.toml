@@ -1,9 +1,9 @@
 [package]
 name = "hack_asm"
 author = "phoony"
-version = "0.1.1-dev"
+version = "0.1.2-dev"
 edition = "2021"
-license-file = "LICENSE"
+license = "MIT"
 description = "A Nand2Tetris Hack Assembly Language Assembler written in Rust"
 readme = "README.md"
 repository = "https://github.com/phoony/hack_asm"
