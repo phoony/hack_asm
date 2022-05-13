@@ -1,7 +1,7 @@
 [package]
 name = "hack_asm"
 author = "phoony"
-version = "0.1.0-dev"
+version = "0.1.1-dev"
 edition = "2021"
 license-file = "LICENSE"
 description = "A Nand2Tetris Hack Assembly Language Assembler written in Rust"
