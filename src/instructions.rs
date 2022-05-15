@@ -1,4 +1,4 @@
-use crate::{HackInt, SYMBOL_TABLE};
+use crate::{symbol_table::SymbolTable, HackInt};
 use anyhow::{bail, Result};
 use phf::phf_map;
 use thiserror::Error;
@@ -14,28 +14,21 @@ pub enum CompilationError {
 }
 
 pub trait Compilable {
-    fn compile(self) -> Result<u16, anyhow::Error>;
+    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, anyhow::Error>;
 }
 
-pub enum AInstruction<'a> {
+pub enum AInstruction {
     Immediate(HackInt),
-    Symbol(&'a str),
+    Symbol(String),
 }
 
-impl<'a> Compilable for AInstruction<'a> {
-    fn compile(self) -> Result<u16, anyhow::Error> {
+impl Compilable for AInstruction {
+    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, anyhow::Error> {
         match self {
-            AInstruction::Immediate(val) => Ok(val),
-            AInstruction::Symbol(name) => {
-                let symbol_table = &SYMBOL_TABLE;
-                match symbol_table.read() {
-                    Ok(table) => Ok(table.get(name)?),
-                    Err(e) => {
-                        let table = e.into_inner();
-                        Ok(table.get(name)?)
-                    }
-                }
-            }
+            AInstruction::Immediate(val) => Ok(*val),
+            AInstruction::Symbol(name) => Ok(symbol_table
+                .expect("Did not pass a SymbolTable instance")
+                .get(name)?),
         }
     }
 }
@@ -100,7 +93,7 @@ impl<'a> CInstruction<'a> {
 }
 
 impl<'a> Compilable for CInstruction<'a> {
-    fn compile(self) -> Result<u16, anyhow::Error> {
+    fn compile(&self, _: Option<&SymbolTable>) -> Result<u16, anyhow::Error> {
         let mut instruction = 0b1110000000000000;
 
         // Lookup destination bits
@@ -134,67 +127,43 @@ mod tests {
     use super::*;
 
     mod a_instruction {
-        use std::{
-            lazy::SyncLazy,
-            sync::{Mutex, MutexGuard},
-        };
-
-        use crate::SymbolTable;
-
         use super::*;
-
-        #[test]
-        fn immediate_at_42() -> Result<(), anyhow::Error> {
-            let instr = AInstruction::Immediate(42);
-            assert_eq!(instr.compile()?, 0b0000000000101010);
-            Ok(())
-        }
 
         #[test]
         fn immediate_at_0() -> Result<(), anyhow::Error> {
             let instr = AInstruction::Immediate(0);
-            assert_eq!(instr.compile()?, 0b0);
+            assert_eq!(instr.compile(None)?, 0b0);
             Ok(())
         }
 
         #[test]
         fn immediate_at_32767() -> Result<(), anyhow::Error> {
             let instr = AInstruction::Immediate(32767);
-            assert_eq!(instr.compile()?, 0b0111111111111111);
+            assert_eq!(instr.compile(None)?, 0b0111111111111111);
             Ok(())
-        }
-
-        static TABLE_MUTEX: SyncLazy<std::sync::Mutex<()>> = SyncLazy::new(Mutex::default);
-
-        // Because tests run in parallel, we need to lock the global symbol table artificially
-        fn reset_and_lock_table() -> MutexGuard<'static, ()> {
-            let lock = TABLE_MUTEX.lock().unwrap();
-            let mut guard = SYMBOL_TABLE.write().unwrap();
-            *guard = SymbolTable::default();
-            lock
         }
 
         #[test]
         fn symbol_undefined() {
-            let _lock = reset_and_lock_table();
-            let instr = AInstruction::Symbol("some_symbol");
-            assert!(instr.compile().is_err());
+            let table = SymbolTable::default();
+            let instr = AInstruction::Symbol("some_symbol".to_string());
+            assert!(instr.compile(Some(&table)).is_err());
         }
 
         #[test]
         fn symbol_built_in() -> Result<(), anyhow::Error> {
-            let _lock = reset_and_lock_table();
-            let instr = AInstruction::Symbol("R10");
-            assert_eq!(instr.compile()?, 0b0000000000001010);
+            let table = SymbolTable::default();
+            let instr = AInstruction::Symbol("R10".to_string());
+            assert_eq!(instr.compile(Some(&table))?, 0b0000000000001010);
             Ok(())
         }
 
         #[test]
         fn symbol_user_defined() -> Result<(), anyhow::Error> {
-            let _lock = reset_and_lock_table();
-            SYMBOL_TABLE.write().unwrap().set("some_symbol", 42)?;
-            let instr = AInstruction::Symbol("some_symbol");
-            assert_eq!(instr.compile()?, 0b0000000000101010);
+            let mut table = SymbolTable::default();
+            table.set("some_symbol", 42)?;
+            let instr = AInstruction::Symbol("some_symbol".to_string());
+            assert_eq!(instr.compile(Some(&table))?, 0b0000000000101010);
             Ok(())
         }
     }
@@ -216,7 +185,7 @@ mod tests {
                 jump: to_option(jump),
             };
 
-            instr.compile().unwrap() == equals
+            instr.compile(None).unwrap() == equals
         }
 
         #[test]
