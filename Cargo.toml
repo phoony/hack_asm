@@ -13,4 +13,3 @@ repository = "https://github.com/phoony/hack_asm"
 [dependencies]
 thiserror = "1.0.31"
 phf = { version = "0.10.1", features = ["macros"] }
-anyhow = "1.0.57"

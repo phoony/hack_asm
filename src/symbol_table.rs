@@ -7,11 +7,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SymbolTableError {
-    #[error("Tried to redefine the built in symbol \"{0}\"")]
+    #[error("tried to redefine the built in symbol \"{0}\"")]
     RedefinedBuiltIn(String),
-    #[error("Tried to redefine the symbol \"{0}\"")]
+    #[error("tried to redefine the symbol \"{0}\"")]
     Redefined(String),
-    #[error("Symbol \"{0}\" not defined")]
+    #[error("symbol \"{0}\" not defined")]
     NotDefined(String),
 }
 
@@ -93,7 +93,7 @@ static BUILT_IN: phf::Map<&'static str, HackInt> = phf_map! {
 /// ## Predefined Symbols
 /// By design of the Hack assembly language we already have predefined symbols inside
 /// of our symbol table.
-/// ```
+/// ```ignore
 /// # use hack_asm::SymbolTable;
 /// let mut table = SymbolTable::new();
 ///

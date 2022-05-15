@@ -1,5 +1,7 @@
-use crate::{symbol_table::SymbolTable, HackInt};
-use anyhow::{bail, Result};
+use crate::{
+    symbol_table::{SymbolTable, SymbolTableError},
+    HackInt,
+};
 use phf::phf_map;
 use thiserror::Error;
 
@@ -11,10 +13,12 @@ pub enum CompilationError {
     Computation(String),
     #[error("invalid jump instruction: \"{0}\"")]
     Jump(String),
+    #[error(transparent)]
+    SymbolTableError(#[from] SymbolTableError),
 }
 
 pub trait Compilable {
-    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, anyhow::Error>;
+    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError>;
 }
 
 pub enum AInstruction {
@@ -23,7 +27,7 @@ pub enum AInstruction {
 }
 
 impl Compilable for AInstruction {
-    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, anyhow::Error> {
+    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError> {
         match self {
             AInstruction::Immediate(val) => Ok(*val),
             AInstruction::Symbol(name) => Ok(symbol_table
@@ -93,28 +97,28 @@ impl<'a> CInstruction<'a> {
 }
 
 impl<'a> Compilable for CInstruction<'a> {
-    fn compile(&self, _: Option<&SymbolTable>) -> Result<u16, anyhow::Error> {
+    fn compile(&self, _: Option<&SymbolTable>) -> Result<u16, CompilationError> {
         let mut instruction = 0b1110000000000000;
 
         // Lookup destination bits
         if let Some(dest) = self.destination {
             match Self::DEST_TABLE.get(dest) {
                 Some(bits) => instruction |= bits,
-                None => bail!(CompilationError::Destination(dest.to_string())),
+                None => return Err(CompilationError::Destination(dest.to_string())),
             }
         }
 
         // Lookup computation bits
         match Self::COMP_TABLE.get(self.computation) {
             Some(bits) => instruction |= bits,
-            None => bail!(CompilationError::Computation(self.computation.to_string())),
+            None => return Err(CompilationError::Computation(self.computation.to_string())),
         }
 
         // Lookup jump bits
         if let Some(jump) = self.jump {
             match Self::JMP_TABLE.get(jump) {
                 Some(bits) => instruction |= bits,
-                None => bail!(CompilationError::Jump(jump.to_string())),
+                None => return Err(CompilationError::Jump(jump.to_string())),
             }
         }
 
@@ -130,14 +134,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn immediate_at_0() -> Result<(), anyhow::Error> {
+        fn immediate_at_0() -> Result<(), CompilationError> {
             let instr = AInstruction::Immediate(0);
             assert_eq!(instr.compile(None)?, 0b0);
             Ok(())
         }
 
         #[test]
-        fn immediate_at_32767() -> Result<(), anyhow::Error> {
+        fn immediate_at_32767() -> Result<(), CompilationError> {
             let instr = AInstruction::Immediate(32767);
             assert_eq!(instr.compile(None)?, 0b0111111111111111);
             Ok(())
@@ -151,7 +155,7 @@ mod tests {
         }
 
         #[test]
-        fn symbol_built_in() -> Result<(), anyhow::Error> {
+        fn symbol_built_in() -> Result<(), CompilationError> {
             let table = SymbolTable::default();
             let instr = AInstruction::Symbol("R10".to_string());
             assert_eq!(instr.compile(Some(&table))?, 0b0000000000001010);
@@ -159,7 +163,7 @@ mod tests {
         }
 
         #[test]
-        fn symbol_user_defined() -> Result<(), anyhow::Error> {
+        fn symbol_user_defined() -> Result<(), CompilationError> {
             let mut table = SymbolTable::default();
             table.set("some_symbol", 42)?;
             let instr = AInstruction::Symbol("some_symbol".to_string());
