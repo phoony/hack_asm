@@ -79,7 +79,7 @@ static BUILT_IN: phf::Map<&'static str, HackInt> = phf_map! {
 /// ------------------------
 /// # Example
 /// ## Basic Usage
-/// ```
+/// ```ignore
 /// # use hack_asm::SymbolTable;
 /// let mut table = SymbolTable::new();
 /// table.set("value", 42).unwrap();
