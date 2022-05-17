@@ -1,47 +1,50 @@
-use std::collections::HashMap;
-
-use crate::HackInt;
-
 use phf::phf_map;
+use std::collections::HashMap;
 use thiserror::Error;
 
+use crate::hack_int::HackInt;
+
 #[derive(Error, Debug)]
-pub enum SymbolTableError {
-    #[error("tried to redefine the built in symbol \"{0}\"")]
-    RedefinedBuiltIn(String),
-    #[error("tried to redefine the symbol \"{0}\"")]
-    Redefined(String),
+pub enum SymbolTableGetError {
     #[error("symbol \"{0}\" not defined")]
     NotDefined(String),
 }
 
+#[derive(Error, Debug)]
+pub enum SymbolTableSetError {
+    #[error("tried to redefine the built in symbol \"{0}\"")]
+    RedefinedBuiltIn(String),
+    #[error("tried to redefine the symbol \"{0}\"")]
+    Redefined(String),
+}
+
 static BUILT_IN: phf::Map<&'static str, HackInt> = phf_map! {
     // Virtual Registers
-    "R0" =>  0,
-    "R1" =>  1,
-    "R2" =>  2,
-    "R3" =>  3,
-    "R4" =>  4,
-    "R5" =>  5,
-    "R6" =>  6,
-    "R7" =>  7,
-    "R8" =>  8,
-    "R9" =>  9,
-    "R10" => 10,
-    "R11" => 11,
-    "R12" => 12,
-    "R13" => 13,
-    "R14" => 14,
-    "R15" => 15,
+    "R0" =>  HackInt::new_unchecked(0),
+    "R1" =>  HackInt::new_unchecked(1),
+    "R2" =>  HackInt::new_unchecked(2),
+    "R3" =>  HackInt::new_unchecked(3),
+    "R4" =>  HackInt::new_unchecked(4),
+    "R5" =>  HackInt::new_unchecked(5),
+    "R6" =>  HackInt::new_unchecked(6),
+    "R7" =>  HackInt::new_unchecked(7),
+    "R8" =>  HackInt::new_unchecked(8),
+    "R9" =>  HackInt::new_unchecked(9),
+    "R10" => HackInt::new_unchecked(10),
+    "R11" => HackInt::new_unchecked(11),
+    "R12" => HackInt::new_unchecked(12),
+    "R13" => HackInt::new_unchecked(13),
+    "R14" => HackInt::new_unchecked(14),
+    "R15" => HackInt::new_unchecked(15),
     // IO
-    "SCREEN" => 16384,
-    "KBD"    => 24576,
+    "SCREEN" => HackInt::new_unchecked(16384),
+    "KBD"    => HackInt::new_unchecked(24576),
     // Reserved
-    "SP"   => 0,
-    "LCL"  => 1,
-    "ARG"  => 2,
-    "THIS" => 3,
-    "THAT" => 4,
+    "SP"   => HackInt::new_unchecked(0),
+    "LCL"  => HackInt::new_unchecked(1),
+    "ARG"  => HackInt::new_unchecked(2),
+    "THIS" => HackInt::new_unchecked(3),
+    "THAT" => HackInt::new_unchecked(4),
 };
 
 /// The symbol table stores and resolves symbols (labels and variables)
@@ -119,15 +122,15 @@ impl SymbolTable {
     /// # Arguments
     /// * `name` - A string that contains the name of the symbol
     /// * `value` - The value (or address) associated with the symbol
-    pub fn set(&mut self, name: &str, value: HackInt) -> Result<(), SymbolTableError> {
+    pub fn set(&mut self, name: &str, value: HackInt) -> Result<(), SymbolTableSetError> {
         if BUILT_IN.get(name).is_some() {
-            return Err(SymbolTableError::RedefinedBuiltIn(name.to_string()));
+            return Err(SymbolTableSetError::RedefinedBuiltIn(name.to_string()));
         }
 
         let entry = self.table.raw_entry_mut().from_key(name);
         match entry {
             std::collections::hash_map::RawEntryMut::Occupied(_) => {
-                Err(SymbolTableError::Redefined(name.to_string()))
+                Err(SymbolTableSetError::Redefined(name.to_string()))
             }
             std::collections::hash_map::RawEntryMut::Vacant(entry) => {
                 entry.insert(name.to_string(), value);
@@ -140,7 +143,7 @@ impl SymbolTable {
     /// May return a [`SymbolTableError`]
     /// # Arguments
     /// * `name` - The symbol name to look up
-    pub fn get(&self, name: &str) -> Result<HackInt, SymbolTableError> {
+    pub fn get(&self, name: &str) -> Result<HackInt, SymbolTableGetError> {
         if let Some(&built_in) = BUILT_IN.get(name) {
             return Ok(built_in);
         }
@@ -149,7 +152,7 @@ impl SymbolTable {
             return Ok(user_defined);
         }
 
-        Err(SymbolTableError::NotDefined(name.to_string()))
+        Err(SymbolTableGetError::NotDefined(name.to_string()))
     }
 }
 
@@ -168,10 +171,10 @@ mod tests {
         let mut table = SymbolTable::new();
 
         // try to redefine a built in symbol
-        let error = table.set("R1", 42).unwrap_err();
+        let error = table.set("R1", HackInt::new_unchecked(42)).unwrap_err();
 
         match error {
-            SymbolTableError::RedefinedBuiltIn(_) => (),
+            SymbolTableSetError::RedefinedBuiltIn(_) => (),
             _ => panic!("expected RedefinedBuiltIn error"),
         }
     }
@@ -181,11 +184,13 @@ mod tests {
         let mut table = SymbolTable::new();
 
         // try to redefine a user defined symbol
-        table.set("some_var", 21).unwrap();
-        let error = table.set("some_var", 42).unwrap_err();
+        table.set("some_var", HackInt::new_unchecked(42)).unwrap();
+        let error = table
+            .set("some_var", HackInt::new_unchecked(42))
+            .unwrap_err();
 
         match error {
-            SymbolTableError::Redefined(_) => (),
+            SymbolTableSetError::Redefined(_) => (),
             _ => panic!("expected RedefinedBuiltIn error"),
         }
     }

@@ -1,6 +1,6 @@
 use crate::{
-    symbol_table::{SymbolTable, SymbolTableError},
-    HackInt,
+    hack_int::HackInt,
+    symbol_table::{SymbolTable, SymbolTableGetError,SymbolTableSetError},
 };
 use phf::phf_map;
 use thiserror::Error;
@@ -14,11 +14,19 @@ pub enum CompilationError {
     #[error("invalid jump instruction: \"{0}\"")]
     Jump(String),
     #[error(transparent)]
-    SymbolTableError(#[from] SymbolTableError),
+    SymbolTableGetError(#[from] SymbolTableGetError),
+    #[error(transparent)]
+    SymbolTableSetError(#[from] SymbolTableSetError),
 }
 
 pub trait Compilable {
     fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError>;
+}
+
+impl Compilable for u16 {
+    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError> {
+        Ok(*self)
+    }
 }
 
 pub enum AInstruction {
@@ -29,18 +37,19 @@ pub enum AInstruction {
 impl Compilable for AInstruction {
     fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError> {
         match self {
-            AInstruction::Immediate(val) => Ok(*val),
+            AInstruction::Immediate(val) => Ok((*val).into()),
             AInstruction::Symbol(name) => Ok(symbol_table
                 .expect("Did not pass a SymbolTable instance")
-                .get(name)?),
+                .get(name)?
+                .into()),
         }
     }
 }
 
 pub struct CInstruction<'a> {
-    destination: Option<&'a str>,
-    computation: &'a str,
-    jump: Option<&'a str>,
+    pub(crate) destination: Option<&'a str>,
+    pub(crate) computation: &'a str,
+    pub(crate) jump: Option<&'a str>,
 }
 
 impl<'a> CInstruction<'a> {
@@ -135,14 +144,14 @@ mod tests {
 
         #[test]
         fn immediate_at_0() -> Result<(), CompilationError> {
-            let instr = AInstruction::Immediate(0);
+            let instr = AInstruction::Immediate(HackInt::new_unchecked(0));
             assert_eq!(instr.compile(None)?, 0b0);
             Ok(())
         }
 
         #[test]
         fn immediate_at_32767() -> Result<(), CompilationError> {
-            let instr = AInstruction::Immediate(32767);
+            let instr = AInstruction::Immediate(HackInt::new_unchecked(32767));
             assert_eq!(instr.compile(None)?, 0b0111111111111111);
             Ok(())
         }
@@ -165,7 +174,7 @@ mod tests {
         #[test]
         fn symbol_user_defined() -> Result<(), CompilationError> {
             let mut table = SymbolTable::default();
-            table.set("some_symbol", 42)?;
+            table.set("some_symbol", HackInt::new_unchecked(42))?;
             let instr = AInstruction::Symbol("some_symbol".to_string());
             assert_eq!(instr.compile(Some(&table))?, 0b0000000000101010);
             Ok(())
