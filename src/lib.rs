@@ -2,6 +2,7 @@
 
 mod hack_int;
 mod instructions;
+mod program_line;
 mod symbol_table;
 
 mod constants {
