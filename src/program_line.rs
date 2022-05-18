@@ -11,7 +11,7 @@ pub enum LineType {
     Other,
 }
 
-impl ProgramLine<'_> {
+impl<'a> ProgramLine<'a> {
     pub fn line_type(&self) -> LineType {
         if self.rest.starts_with("//") {
             return LineType::Other;
@@ -25,7 +25,7 @@ impl ProgramLine<'_> {
         }
     }
 
-    fn longest_match<'a>(&'a self, options: &[&'a str], followed_by: &str) -> &str {
+    fn longest_match<'b, 'c>(&'a self, options: &[&'b str], followed_by: &'c str) -> &'b str {
         for option in options {
             let len = option.len();
             if self.rest.starts_with(option) && self.rest[len..].starts_with(followed_by) {
@@ -47,7 +47,7 @@ impl ProgramLine<'_> {
         self.advance(longest.len() + followed_by.len())
     }
 
-    pub fn take_valid(&mut self, valid: &str) -> &str {
+    pub fn take_valid(&mut self, valid: &str) -> &'a str {
         let chars = self.rest.chars();
         let mut count = 0;
         for char in chars {
@@ -134,5 +134,15 @@ mod tests {
         line.consume_longest_prefix(&prefixes, " ");
 
         assert_eq!(line.rest, "WORLD!")
+    }
+
+    #[test]
+    fn take_valid() {
+        let mut line: ProgramLine = "AAABBBCDEF".into();
+        let valid = "ABC";
+        let result = line.take_valid(valid);
+
+        assert_eq!(result, "AAABBBC");
+        assert_eq!(line.rest, "DEF");
     }
 }
