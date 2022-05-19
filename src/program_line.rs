@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct ProgramLine<'a> {
     line: &'a str,
     rest: &'a str,
@@ -26,14 +27,21 @@ impl<'a> ProgramLine<'a> {
     }
 
     fn longest_match<'b, 'c>(&'a self, options: &[&'b str], followed_by: &'c str) -> &'b str {
+        let mut longest_len = 0;
+        let mut longest_str = "";
+
         for option in options {
             let len = option.len();
-            if self.rest.starts_with(option) && self.rest[len..].starts_with(followed_by) {
-                return option;
+            if self.rest.starts_with(option)
+                && self.rest[len..].starts_with(followed_by)
+                && len > longest_len
+            {
+                longest_len = len;
+                longest_str = option;
             }
         }
 
-        ""
+        longest_str
     }
 
     pub fn consume(&mut self, prefix: &str) {
@@ -42,9 +50,16 @@ impl<'a> ProgramLine<'a> {
         }
     }
 
-    pub fn consume_longest_prefix(&mut self, prefixes: &[&str], followed_by: &str) {
+    pub fn take_longest_prefix<'b, 'c>(
+        &mut self,
+        prefixes: &[&'b str],
+        followed_by: &'c str,
+    ) -> &'b str {
         let longest = self.longest_match(prefixes, followed_by);
-        self.advance(longest.len() + followed_by.len())
+        if !longest.is_empty() {
+            self.advance(longest.len() + followed_by.len());
+        }
+        longest
     }
 
     pub fn take_valid(&mut self, valid: &str) -> &'a str {
@@ -61,6 +76,10 @@ impl<'a> ProgramLine<'a> {
         self.advance(count);
 
         result
+    }
+
+    pub fn rest_is_comment_or_empty(&self) -> bool {
+        self.rest.trim_start().is_empty() || self.rest.trim_start().starts_with("//")
     }
 
     pub fn peek(&self) -> Option<char> {
@@ -131,8 +150,9 @@ mod tests {
     fn longest_match() {
         let mut line: ProgramLine = "HELLO WORLD!".into();
         let prefixes = ["ABC", "HELL", "HELLO", "WORLD"];
-        line.consume_longest_prefix(&prefixes, " ");
+        let result = line.take_longest_prefix(&prefixes, " ");
 
+        assert_eq!(result, "HELLO");
         assert_eq!(line.rest, "WORLD!")
     }
 
