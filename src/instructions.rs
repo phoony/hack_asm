@@ -45,7 +45,8 @@ impl Compilable for AInstruction {
                 match symbol_table.get(name) {
                     Ok(v) => Ok(v.into()),
                     Err(SymbolTableGetError::NotDefined(_)) => {
-                        let index = symbol_table.variable_index()?;
+                        let index = symbol_table.get_variable_index();
+                        symbol_table.increment_variable_index()?;
                         symbol_table.set(name, index)?;
                         Ok(index.into())
                     }

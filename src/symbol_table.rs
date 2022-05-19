@@ -157,12 +157,14 @@ impl SymbolTable {
         Err(SymbolTableGetError::NotDefined(name.to_string()))
     }
 
-    /// Gets the current variable index and increments it
-    pub fn variable_index(&mut self) -> Result<HackInt, ParseHackIntError> {
-        let index = self.variable_index;
-        let temp: u16 = index.into();
-        self.variable_index = HackInt::try_new(temp + 1)?;
-        Ok(index)
+    pub fn get_variable_index(&mut self) -> HackInt {
+        self.variable_index
+    }
+
+    pub fn increment_variable_index(&mut self) -> Result<(), ParseHackIntError> {
+        let index: u16 = self.variable_index.into();
+        self.variable_index = HackInt::try_new(index + 1)?;
+        Ok(())
     }
 }
 
