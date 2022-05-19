@@ -1,6 +1,6 @@
 use crate::{
-    hack_int::HackInt,
-    symbol_table::{SymbolTable, SymbolTableGetError,SymbolTableSetError},
+    hack_int::{HackInt, ParseHackIntError},
+    symbol_table::{SymbolTable, SymbolTableGetError, SymbolTableSetError},
 };
 use phf::phf_map;
 use thiserror::Error;
@@ -17,14 +17,16 @@ pub enum CompilationError {
     SymbolTableGetError(#[from] SymbolTableGetError),
     #[error(transparent)]
     SymbolTableSetError(#[from] SymbolTableSetError),
+    #[error(transparent)]
+    HackIntError(#[from] ParseHackIntError),
 }
 
 pub trait Compilable {
-    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError>;
+    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError>;
 }
 
 impl Compilable for u16 {
-    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError> {
+    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
         Ok(*self)
     }
 }
@@ -35,13 +37,20 @@ pub enum AInstruction {
 }
 
 impl Compilable for AInstruction {
-    fn compile(&self, symbol_table: Option<&SymbolTable>) -> Result<u16, CompilationError> {
+    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
         match self {
             AInstruction::Immediate(val) => Ok((*val).into()),
-            AInstruction::Symbol(name) => Ok(symbol_table
-                .expect("Did not pass a SymbolTable instance")
-                .get(name)?
-                .into()),
+            AInstruction::Symbol(name) => {
+                let symbol_table = symbol_table.expect("did not pass a SymbolTable instance");
+                match symbol_table.get(name) {
+                    Ok(v) => Ok(v.into()),
+                    Err(SymbolTableGetError::NotDefined(_)) => {
+                        let index = symbol_table.variable_index()?;
+                        symbol_table.set(name, index)?;
+                        Ok(index.into())
+                    }
+                }
+            }
         }
     }
 }
@@ -78,20 +87,26 @@ impl<'a> CInstruction<'a> {
         "D-1" => 0b000_0001110_000000,
         "A-1" => 0b000_0110010_000000,
         "D+A" => 0b000_0000010_000000,
+        "A+D" => 0b000_0000010_000000,
         "D-A" => 0b000_0010011_000000,
         "A-D" => 0b000_0000111_000000,
         "D&A" => 0b000_0000000_000000,
+        "A&D" => 0b000_0000000_000000,
         "D|A" => 0b000_0010101_000000,
+        "A|D" => 0b000_0010101_000000,
         "M"   => 0b000_1110000_000000,
         "!M"  => 0b000_1110001_000000,
         "-M"  => 0b000_1110011_000000,
         "M+1" => 0b000_1110111_000000,
         "M-1" => 0b000_1110010_000000,
         "D+M" => 0b000_1000010_000000,
+        "M+D" => 0b000_1000010_000000,
         "D-M" => 0b000_1010011_000000,
         "M-D" => 0b000_1000111_000000,
         "D&M" => 0b000_1000000_000000,
+        "M&D" => 0b000_1000000_000000,
         "D|M" => 0b000_1010101_000000,
+        "M|D" => 0b000_1010101_000000,
     };
 
     const JMP_TABLE: phf::Map<&'static str, u16> = phf_map! {
@@ -102,11 +117,12 @@ impl<'a> CInstruction<'a> {
         "JNE" => 0b000000000000_101,
         "JLE" => 0b000000000000_110,
         "JMP" => 0b000000000000_111,
+        "" => 0b000000000000_000,
     };
 }
 
 impl<'a> Compilable for CInstruction<'a> {
-    fn compile(&self, _: Option<&SymbolTable>) -> Result<u16, CompilationError> {
+    fn compile(&self, _: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
         let mut instruction = 0b1110000000000000;
 
         // Lookup destination bits
@@ -158,16 +174,16 @@ mod tests {
 
         #[test]
         fn symbol_undefined() {
-            let table = SymbolTable::default();
+            let mut table = SymbolTable::default();
             let instr = AInstruction::Symbol("some_symbol".to_string());
-            assert!(instr.compile(Some(&table)).is_err());
+            assert!(instr.compile(Some(&mut table)).is_err());
         }
 
         #[test]
         fn symbol_built_in() -> Result<(), CompilationError> {
-            let table = SymbolTable::default();
+            let mut table = SymbolTable::default();
             let instr = AInstruction::Symbol("R10".to_string());
-            assert_eq!(instr.compile(Some(&table))?, 0b0000000000001010);
+            assert_eq!(instr.compile(Some(&mut table))?, 0b0000000000001010);
             Ok(())
         }
 
@@ -176,7 +192,7 @@ mod tests {
             let mut table = SymbolTable::default();
             table.set("some_symbol", HackInt::new_unchecked(42))?;
             let instr = AInstruction::Symbol("some_symbol".to_string());
-            assert_eq!(instr.compile(Some(&table))?, 0b0000000000101010);
+            assert_eq!(instr.compile(Some(&mut table))?, 0b0000000000101010);
             Ok(())
         }
     }
