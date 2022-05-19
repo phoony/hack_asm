@@ -26,7 +26,7 @@ pub trait Compilable {
 }
 
 impl Compilable for u16 {
-    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
+    fn compile(&self, _: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
         Ok(*self)
     }
 }
@@ -171,13 +171,6 @@ mod tests {
             let instr = AInstruction::Immediate(HackInt::new_unchecked(32767));
             assert_eq!(instr.compile(None)?, 0b0111111111111111);
             Ok(())
-        }
-
-        #[test]
-        fn symbol_undefined() {
-            let mut table = SymbolTable::default();
-            let instr = AInstruction::Symbol("some_symbol".to_string());
-            assert!(instr.compile(Some(&mut table)).is_err());
         }
 
         #[test]
