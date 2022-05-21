@@ -1,11 +1,16 @@
 #![feature(hash_raw_entry)]
+#[macro_use]
+extern crate pest_derive;
 
+mod assembler_context;
 mod hack_int;
 mod instructions;
-mod program_line;
+mod parsing;
 mod symbol_table;
 
 mod constants {
-    pub(crate) const MEMORY_SIZE: usize = 16383;
+    use crate::hack_int::HackInt;
+
+    pub(crate) const MEMORY_SIZE: HackInt = HackInt::new_unchecked(16383);
     pub(crate) const ROM_SIZE: usize = 32767;
 }

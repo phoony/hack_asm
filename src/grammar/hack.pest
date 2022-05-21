@@ -1,0 +1,49 @@
+// globally allowed whitespace
+WHITESPACE = _{ " " | "\t" }
+
+// symbol
+symbol_inner = @{ ASCII_ALPHANUMERIC | "." | "_" | "$" | "%" | "#"}
+symbol_begin = @{ ASCII_ALPHA | "." | "_" | "$" | "%" | "#"}
+
+// @-instructions
+symbol = @{ symbol_begin ~ symbol_inner* }
+literal = @{ ASCII_DIGIT+ }
+at_instruction = { "@" ~ (literal | symbol)}
+
+// comment
+comment = _{ "//" ~ (!NEWLINE ~ ANY)* }
+
+// label
+label = { "(" ~ symbol ~ ")" }
+
+// constants
+one = { "1" }
+zero = { "0" }
+neg_one = { "-1" }
+constant = { one | zero | neg_one }
+
+// operators / destination
+register = { (^"A" | ^"M" | ^"D") }
+
+// operation helpers
+inc = { "+" ~ "1" }
+dec = { "-" ~ "1" }
+not = { "!" }
+neg = { "-" }
+unary_pre = _{ ( not| neg ) ~ register }
+unary_post = _{ register ~ (inc | dec )}
+binary_op = { "+" | "|" | "-" | "&" }
+
+// operations
+unary = { unary_pre | unary_post }
+binary = { register ~ binary_op ~ register}
+
+// c-instruction
+destination = { register{0,3} }
+computation = { constant | unary | binary | register }
+jump = { ^"JMP" | ^"JGT" | ^"JEQ"| ^"JLT" | ^"JGE" | ^"JLE" | ^"JNE" }
+c_instruction = { (destination ~ "=")? ~ computation ~ (";" ~ jump)? }
+
+// final
+instruction = _{ label | at_instruction | c_instruction }
+program = { SOI ~ (instruction? ~ comment? ~ NEWLINE)* ~ EOI }

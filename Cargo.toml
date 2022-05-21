@@ -1,7 +1,7 @@
 [package]
 name = "hack_asm"
 author = "phoony"
-version = "0.2.0-dev"
+version = "0.3.0-dev"
 edition = "2021"
 license = "MIT"
 description = "A Nand2Tetris Hack Assembly Language Assembler written in Rust"
@@ -12,4 +12,6 @@ repository = "https://github.com/phoony/hack_asm"
 
 [dependencies]
 thiserror = "1.0.31"
+pest = "2.1.3"
+pest_derive = "2.1.0"
 phf = { version = "0.10.1", features = ["macros"] }

@@ -2,7 +2,7 @@ use phf::phf_map;
 use std::collections::HashMap;
 use thiserror::Error;
 
-use crate::hack_int::{HackInt, ParseHackIntError};
+use crate::hack_int::HackInt;
 
 #[derive(Error, Debug)]
 pub enum SymbolTableGetError {
@@ -106,14 +106,12 @@ static BUILT_IN: phf::Map<&'static str, HackInt> = phf_map! {
 /// ```
 pub struct SymbolTable {
     table: HashMap<String, HackInt>,
-    variable_index: HackInt,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
             table: HashMap::default(),
-            variable_index: HackInt::new_unchecked(16),
         }
     }
 
@@ -155,16 +153,6 @@ impl SymbolTable {
         }
 
         Err(SymbolTableGetError::NotDefined(name.to_string()))
-    }
-
-    pub fn get_variable_index(&mut self) -> HackInt {
-        self.variable_index
-    }
-
-    pub fn increment_variable_index(&mut self) -> Result<(), ParseHackIntError> {
-        let index: u16 = self.variable_index.into();
-        self.variable_index = HackInt::try_new(index + 1)?;
-        Ok(())
     }
 }
 

@@ -1,228 +1,156 @@
+#![allow(clippy::unusual_byte_groupings)]
+
 use crate::{
-    hack_int::{HackInt, ParseHackIntError},
-    symbol_table::{SymbolTable, SymbolTableGetError, SymbolTableSetError},
+    assembler_context::{AssemblerContext, AssemblerError},
+    hack_int::HackInt,
 };
-use phf::phf_map;
-use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum CompilationError {
-    #[error("invalid destination: \"{0}\"")]
-    Destination(String),
-    #[error("invalid computation: \"{0}\"")]
-    Computation(String),
-    #[error("invalid jump instruction: \"{0}\"")]
-    Jump(String),
-    #[error(transparent)]
-    SymbolTableGetError(#[from] SymbolTableGetError),
-    #[error(transparent)]
-    SymbolTableSetError(#[from] SymbolTableSetError),
-    #[error(transparent)]
-    HackIntError(#[from] ParseHackIntError),
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Register {
+    D,
+    M,
+    A,
 }
 
-pub trait Compilable {
-    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError>;
+#[derive(Debug, Clone, Copy)]
+pub enum JumpType {
+    Null,
+    Jmp,
+    Jgt,
+    Jeq,
+    Jlt,
+    Jge,
+    Jle,
+    Jne,
 }
 
-impl Compilable for u16 {
-    fn compile(&self, _: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
-        Ok(*self)
+#[derive(Debug, Clone, Copy)]
+pub enum Computation {
+    Literal(i8),
+    Identity(Register),
+    Not(Register),
+    Neg(Register),
+    Inc(Register),
+    Dec(Register),
+    Add(Register, Register),
+    Sub(Register, Register),
+    And(Register, Register),
+    Or(Register, Register),
+}
+
+#[derive(Debug)]
+pub struct CInstruction {
+    pub destination: Option<Vec<Register>>,
+    pub computation: Computation,
+    pub jump: Option<JumpType>,
+}
+
+impl CInstruction {
+    fn jump_mask(jump: JumpType) -> u16 {
+        match jump {
+            JumpType::Null => 0b0000000000000_000,
+            JumpType::Jgt => 0b0000000000000_001,
+            JumpType::Jeq => 0b0000000000000_010,
+            JumpType::Jge => 0b0000000000000_011,
+            JumpType::Jlt => 0b0000000000000_100,
+            JumpType::Jne => 0b0000000000000_101,
+            JumpType::Jle => 0b0000000000000_110,
+            JumpType::Jmp => 0b0000000000000_111,
+        }
     }
-}
 
-pub enum AInstruction {
-    Immediate(HackInt),
-    Symbol(String),
-}
+    fn register_mask(register: &Register) -> u16 {
+        match register {
+            Register::D => 0b0000000000_010_000,
+            Register::M => 0b0000000000_001_000,
+            Register::A => 0b0000000000_100_000,
+        }
+    }
 
-impl Compilable for AInstruction {
-    fn compile(&self, symbol_table: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
-        match self {
-            AInstruction::Immediate(val) => Ok((*val).into()),
-            AInstruction::Symbol(name) => {
-                let symbol_table = symbol_table.expect("did not pass a SymbolTable instance");
-                match symbol_table.get(name) {
-                    Ok(v) => Ok(v.into()),
-                    Err(SymbolTableGetError::NotDefined(_)) => {
-                        let index = symbol_table.get_variable_index();
-                        symbol_table.increment_variable_index()?;
-                        symbol_table.set(name, index)?;
-                        Ok(index.into())
-                    }
-                }
-            }
+    fn dest_mask(destinations: &[Register]) -> u16 {
+        let mut dest = 0;
+
+        for d in destinations {
+            dest |= CInstruction::register_mask(d);
+        }
+
+        dest
+    }
+
+    fn computation_mask(computation: Computation) -> u16 {
+        match computation {
+            Computation::Literal(0) => 0b000_0101010_000000,
+            Computation::Literal(1) => 0b000_0111111_000000,
+            Computation::Literal(-1) => 0b000_0111010_000000,
+            Computation::Identity(Register::D) => 0b000_0001100_000000,
+            Computation::Identity(Register::A) => 0b000_0110000_000000,
+            Computation::Identity(Register::M) => 0b000_1110000_000000,
+            Computation::Not(Register::D) => 0b000_0001101_000000,
+            Computation::Not(Register::A) => 0b000_0110001_000000,
+            Computation::Not(Register::M) => 0b000_1110001_000000,
+            Computation::Neg(Register::D) => 0b000_0001111_000000,
+            Computation::Neg(Register::A) => 0b000_0110011_000000,
+            Computation::Neg(Register::M) => 0b000_1110011_000000,
+            Computation::Inc(Register::D) => 0b000_0011111_000000,
+            Computation::Inc(Register::A) => 0b000_0110111_000000,
+            Computation::Inc(Register::M) => 0b000_1110111_000000,
+            Computation::Dec(Register::D) => 0b000_0001110_000000,
+            Computation::Dec(Register::A) => 0b000_0110010_000000,
+            Computation::Dec(Register::M) => 0b000_1110010_000000,
+            Computation::Add(Register::D, Register::A)
+            | Computation::Add(Register::A, Register::D) => 0b000_0000010_000000,
+            Computation::Add(Register::D, Register::M)
+            | Computation::Add(Register::M, Register::D) => 0b000_1000010_000000,
+            Computation::Sub(Register::D, Register::A) => 0b000_0010011_000000,
+            Computation::Sub(Register::A, Register::D) => 0b000_0000111_000000,
+            Computation::Sub(Register::D, Register::M) => 0b000_1010011_000000,
+            Computation::Sub(Register::M, Register::D) => 0b000_1000111_000000,
+            Computation::And(Register::D, Register::A) => 0b000_0000000_000000,
+            Computation::And(Register::D, Register::M) => 0b000_1000000_000000,
+            Computation::Or(Register::D, Register::A) => 0b000_0010101_000000,
+            Computation::Or(Register::D, Register::M) => 0b000_1010101_000000,
+            _ => todo!(),
         }
     }
 }
 
-pub struct CInstruction<'a> {
-    pub(crate) destination: Option<&'a str>,
-    pub(crate) computation: &'a str,
-    pub(crate) jump: Option<&'a str>,
-}
-
-impl<'a> CInstruction<'a> {
-    const DEST_TABLE: phf::Map<&'static str, u16> = phf_map! {
-        "M"   => 0b0000000000_001_000,
-        "D"   => 0b0000000000_010_000,
-        "MD"  => 0b0000000000_011_000,
-        "A"   => 0b0000000000_100_000,
-        "AM"  => 0b0000000000_101_000,
-        "AD"  => 0b0000000000_110_000,
-        "AMD" => 0b0000000000_111_000,
-    };
-
-    const COMP_TABLE: phf::Map<&'static str, u16> = phf_map! {
-        "0"   => 0b000_0101010_000000,
-        "1"   => 0b000_0111111_000000,
-        "-1"  => 0b000_0111010_000000,
-        "D"   => 0b000_0001100_000000,
-        "A"   => 0b000_0110000_000000,
-        "!D"  => 0b000_0001101_000000,
-        "!A"  => 0b000_0110001_000000,
-        "-D"  => 0b000_0001111_000000,
-        "-A"  => 0b000_0110011_000000,
-        "D+1" => 0b000_0011111_000000,
-        "A+1" => 0b000_0110111_000000,
-        "D-1" => 0b000_0001110_000000,
-        "A-1" => 0b000_0110010_000000,
-        "D+A" => 0b000_0000010_000000,
-        "A+D" => 0b000_0000010_000000,
-        "D-A" => 0b000_0010011_000000,
-        "A-D" => 0b000_0000111_000000,
-        "D&A" => 0b000_0000000_000000,
-        "A&D" => 0b000_0000000_000000,
-        "D|A" => 0b000_0010101_000000,
-        "A|D" => 0b000_0010101_000000,
-        "M"   => 0b000_1110000_000000,
-        "!M"  => 0b000_1110001_000000,
-        "-M"  => 0b000_1110011_000000,
-        "M+1" => 0b000_1110111_000000,
-        "M-1" => 0b000_1110010_000000,
-        "D+M" => 0b000_1000010_000000,
-        "M+D" => 0b000_1000010_000000,
-        "D-M" => 0b000_1010011_000000,
-        "M-D" => 0b000_1000111_000000,
-        "D&M" => 0b000_1000000_000000,
-        "M&D" => 0b000_1000000_000000,
-        "D|M" => 0b000_1010101_000000,
-        "M|D" => 0b000_1010101_000000,
-    };
-
-    const JMP_TABLE: phf::Map<&'static str, u16> = phf_map! {
-        "JGT" => 0b000000000000_001,
-        "JEQ" => 0b000000000000_010,
-        "JGE" => 0b000000000000_011,
-        "JLT" => 0b000000000000_100,
-        "JNE" => 0b000000000000_101,
-        "JLE" => 0b000000000000_110,
-        "JMP" => 0b000000000000_111,
-        "" => 0b000000000000_000,
-    };
-}
-
-impl<'a> Compilable for CInstruction<'a> {
-    fn compile(&self, _: Option<&mut SymbolTable>) -> Result<u16, CompilationError> {
+impl CInstruction {
+    pub fn to_u16(&self) -> u16 {
         let mut instruction = 0b1110000000000000;
 
-        // Lookup destination bits
-        if let Some(dest) = self.destination {
-            match Self::DEST_TABLE.get(dest) {
-                Some(bits) => instruction |= bits,
-                None => return Err(CompilationError::Destination(dest.to_string())),
-            }
+        if let Some(destination) = &self.destination {
+            instruction |= CInstruction::dest_mask(destination)
         }
 
-        // Lookup computation bits
-        match Self::COMP_TABLE.get(self.computation) {
-            Some(bits) => instruction |= bits,
-            None => return Err(CompilationError::Computation(self.computation.to_string())),
-        }
-
-        // Lookup jump bits
         if let Some(jump) = self.jump {
-            match Self::JMP_TABLE.get(jump) {
-                Some(bits) => instruction |= bits,
-                None => return Err(CompilationError::Jump(jump.to_string())),
-            }
+            instruction |= CInstruction::jump_mask(jump)
         }
 
-        Ok(instruction)
+        instruction |= CInstruction::computation_mask(self.computation);
+
+        instruction
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub enum AValue<'a> {
+    Symbol(&'a str),
+    Literal(HackInt),
+}
 
-    mod a_instruction {
-        use super::*;
+pub struct AInstruction<'a> {
+    pub value: AValue<'a>,
+}
 
-        #[test]
-        fn immediate_at_0() -> Result<(), CompilationError> {
-            let instr = AInstruction::Immediate(HackInt::new_unchecked(0));
-            assert_eq!(instr.compile(None)?, 0b0);
-            Ok(())
-        }
-
-        #[test]
-        fn immediate_at_32767() -> Result<(), CompilationError> {
-            let instr = AInstruction::Immediate(HackInt::new_unchecked(32767));
-            assert_eq!(instr.compile(None)?, 0b0111111111111111);
-            Ok(())
-        }
-
-        #[test]
-        fn symbol_built_in() -> Result<(), CompilationError> {
-            let mut table = SymbolTable::default();
-            let instr = AInstruction::Symbol("R10".to_string());
-            assert_eq!(instr.compile(Some(&mut table))?, 0b0000000000001010);
-            Ok(())
-        }
-
-        #[test]
-        fn symbol_user_defined() -> Result<(), CompilationError> {
-            let mut table = SymbolTable::default();
-            table.set("some_symbol", HackInt::new_unchecked(42))?;
-            let instr = AInstruction::Symbol("some_symbol".to_string());
-            assert_eq!(instr.compile(Some(&mut table))?, 0b0000000000101010);
-            Ok(())
+impl<'a> AInstruction<'a> {
+    pub fn to_u16(&self, context: &mut AssemblerContext) -> Result<u16, AssemblerError> {
+        match &self.value {
+            AValue::Symbol(name) => Ok(context.get_or_create_variable(name)?),
+            AValue::Literal(value) => Ok((*value).into()),
         }
     }
+}
 
-    mod c_instruction {
-        use super::*;
-
-        fn test_c(dest: &str, comp: &str, jump: &str, equals: u16) -> bool {
-            fn to_option(s: &str) -> Option<&str> {
-                match s {
-                    "" => None,
-                    other => Some(other),
-                }
-            }
-
-            let instr = CInstruction {
-                destination: to_option(dest),
-                computation: comp,
-                jump: to_option(jump),
-            };
-
-            instr.compile(None).unwrap() == equals
-        }
-
-        #[test]
-        fn complete() {
-            assert!(test_c("AMD", "D+M", "JMP", 0b1111000010111111));
-            assert!(test_c("D", "A", "", 0b1110110000010000));
-            assert!(test_c("M", "D|M", "", 0b1111010101001000));
-            assert!(test_c("A", "A-1", "", 0b1110110010100000));
-            assert!(test_c("", "0", "JMP", 0b1110101010000111));
-            assert!(test_c("", "D", "JLE", 0b1110001100000110));
-            assert!(test_c("AM", "M+1", "", 0b1111110111101000));
-            assert!(test_c("D", "D&A", "", 0b1110000000010000));
-            assert!(test_c("D", "M", "", 0b1111110000010000));
-            assert!(test_c("D", "!M", "", 0b1111110001010000));
-        }
-    }
+#[derive(Debug)]
+pub struct Label<'a> {
+    pub name: &'a str,
 }

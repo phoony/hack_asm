@@ -4,7 +4,7 @@ use thiserror::Error;
 /// So technically a u16 is one bit larger but it is an in-built type we can use.
 /// However, a HackInt shall always be inside of the aforementioned bounds.
 /// We assure the correctness of this by checking the user input inside of the parser.
-#[derive(Copy, Clone)]
+#[derive(PartialEq, PartialOrd, Copy, Clone)]
 pub struct HackInt(u16);
 
 #[derive(Error, Debug)]
@@ -31,8 +31,12 @@ impl HackInt {
         Self::try_new(value)
     }
 
-    pub(crate) const fn new_unchecked(value: u16) -> HackInt {
+    pub const fn new_unchecked(value: u16) -> HackInt {
         Self(value)
+    }
+
+    pub fn inc_unchecked(&mut self) {
+        self.0 += 1;
     }
 }
 
