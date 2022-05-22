@@ -9,7 +9,7 @@ For this project, I set out to implement a simple assembler for the Nand2Tetris 
 ## Usage
 
 ```console
-hack_asm.exe <INPUT_FILE>
+hack_asm <INPUT_FILE>
 ```
 
 For a given input.asm this will generate an input.hack file.
