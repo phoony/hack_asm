@@ -14,7 +14,6 @@ pub enum Register {
 
 #[derive(Debug, Clone, Copy)]
 pub enum JumpType {
-    Null,
     Jmp,
     Jgt,
     Jeq,
@@ -48,7 +47,6 @@ pub struct CInstruction {
 impl CInstruction {
     fn jump_mask(jump: JumpType) -> u16 {
         match jump {
-            JumpType::Null => 0b0000000000000_000,
             JumpType::Jgt => 0b0000000000000_001,
             JumpType::Jeq => 0b0000000000000_010,
             JumpType::Jge => 0b0000000000000_011,

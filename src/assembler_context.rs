@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::{
     hack_int::HackInt,
     instructions::Label,
-    parsing::ParsedInstruction,
+    parsing::{ParseError, ParsedInstruction},
     symbol_table::{SymbolTable, SymbolTableGetError, SymbolTableSetError},
 };
 
@@ -11,7 +11,7 @@ pub struct AssemblerContext {
     symbol_table: SymbolTable,
     current_variable_address: HackInt,
     current_label_address: HackInt,
-    pub output: Vec<u16>,
+    output: Vec<u16>,
 }
 
 #[derive(Error, Debug)]
@@ -22,6 +22,8 @@ pub enum AssemblerError {
     TooManyInstructions,
     #[error(transparent)]
     SymbolTableSetError(#[from] SymbolTableSetError),
+    #[error(transparent)]
+    ParseError(#[from] ParseError),
 }
 
 impl AssemblerContext {
@@ -76,6 +78,10 @@ impl AssemblerContext {
         self.current_variable_address.inc_unchecked();
 
         Ok(result)
+    }
+
+    pub fn into_output(self) -> Vec<u16> {
+        self.output
     }
 }
 
